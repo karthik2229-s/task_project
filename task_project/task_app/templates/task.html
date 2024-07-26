@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+{% load static %}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task List</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- DataTables CSS and JS -->
+    <link href="https://cdn.datatables.net/1.12.1/css/jquery.dataTables.min.css" rel="stylesheet">
+    <script src="https://cdn.datatables.net/1.12.1/js/jquery.dataTables.min.js"></script>
+    
+    <!-- Toastr CSS and JS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/css/toastr.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>Task List</h1>
+        <div>
+            <span class="username">Welcome, {{ user.username }}</span>
+            <a class="logout-btn" href="{% url 'logout' %}">Logout</a>
+        </div>
+    </div>
+    <div class="container">
+        <div class="form-container">
+            <form id="task-form">
+                <input type="hidden" id="task-id">
+                <input type="text" id="task-title" placeholder="Title" required>
+                <input type="text" id="task-description" placeholder="Description" required>
+                <select id="task-assigned-to" required>
+                    <option value="">Select User</option>
+                </select>
+                <select id="task-status" class="d-none">
+                    <option value="Assigned">Assigned</option>
+                    <option value="Closed">Closed</option>
+                </select>
+                <button type="submit">Create Task</button>
+            </form>
+        </div>
+        <table id="data-table" class="display">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Created By</th>
+                    <th>Assigned To</th>
+                    <th>Created Date</th>
+                    <th>Status</th>
+                    <th>Last Updated By</th>
+                    <th>Last Updated At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            var taskListUrl = "{% url 'task_list' %}";
+            var table = $('#data-table').DataTable({
+                ajax: {
+                    url: taskListUrl,
+                    dataSrc: '',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    error: function(xhr, error, thrown) {
+                        console.error('Ajax error:', error);
+                        toastr.error('Failed to load data. Please check the console for more information.', 'Error');
+                    }
+                },
+                columns: [
+                    { data: 'title' },
+                    { data: 'description' },
+                    { data: 'created_by_username' },
+                    { data: 'assigned_to_username' },
+                    { data: 'created_date' },
+                    { data: 'status' },
+                    { data: 'last_updated_by_username' },
+                    { data: 'updated_at' },
+                    {
+                        data: null,
+                        defaultContent: '<button class="edit-btn">Edit</button> <button class="delete-btn">Delete</button>',
+                        orderable: false
+                    }
+                ],
+                responsive: true,
+                language: {
+                    emptyTable: "No tasks available"
+                },
+                initComplete: function() {
+                    toastr.success('Tasks loaded successfully', 'Success');
+                }
+            });
+
+            $('#task-form').on('submit', function(e) {
+                e.preventDefault();
+                var id = $('#task-id').val();
+                if (id) {
+                    var url = "{% url 'task_detail' pk='0' %}".replace('0', id);
+                    var method = "PUT";
+                    var api_data = JSON.stringify({
+                        title: $('#task-title').val(),
+                        description: $('#task-description').val(),
+                        assigned_to: $('#task-assigned-to').val(),
+                        status: $('#task-status').val()
+                    })
+                }
+                else{
+                    var url = "{% url 'task_list' %}";
+                    var method = "POST"
+                    var api_data = JSON.stringify({
+                        title: $('#task-title').val(),
+                        description: $('#task-description').val(),
+                        assigned_to: $('#task-assigned-to').val()
+                    })
+                }
+                $.ajax({
+                    url: url,
+                    method: method,
+                    contentType: 'application/json',
+                    headers: {
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                    data: api_data,
+                    success: function(response) {
+                        toastr.success('Task saved successfully', 'Success');
+                        $('#task-form')[0].reset();
+                        $('#task-id').val('');
+                        $('#task-status').addClass('d-none');
+                        table.ajax.reload();
+                    },
+                    error: function(xhr, status, error) {
+                        toastr.error('Failed to save task', 'Error');
+                    }
+                });
+            });
+
+            $('#data-table tbody').on('click', '.edit-btn', function() {
+                var data = table.row($(this).parents('tr')).data();
+                $('#task-id').val(data.id);
+                $('#task-title').val(data.title);
+                $('#task-description').val(data.description);
+                $('#task-assigned-to').val(data.assigned_to);
+                $('#task-status').removeClass('d-none');
+                $('#task-status').val(data.status);
+                $('html, body').animate({ scrollTop: $(".form-container").offset().top }, 500);
+            });
+
+
+            $('#data-table tbody').on('click', '.delete-btn', function() {
+                if (confirm('Are you sure you want to delete this task?')) {
+                    var data = table.row($(this).closest('tr')).data();
+                    var id = data.id;
+                    var url = "{% url 'task_detail' pk='0' %}".replace('0', id);
+                    
+                    $.ajax({
+                        url: url,
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}'
+                        },
+                        success: function(response) {
+                            $('#task-status').addClass('d-none');
+                            $('#task-form')[0].reset();
+                            toastr.success('Task deleted successfully', 'Success');
+                            table.ajax.reload();
+                        },
+                        error: function(xhr, status, error) {
+                            toastr.error('Failed to delete task', 'Error');
+                        }
+                    });
+                }
+            });
+
+            $.ajax({
+                url: "{% url 'user_list' %}",
+                method: 'GET',
+                success: function(data) {
+                    var select = $('#task-assigned-to');
+                    data.forEach(function(user) {
+                        select.append(new Option(user.username, user.id));
+                    });
+                }
+            });
+        });
+    </script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f9fc;
+            color: #333;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background-color: #0044cc;
+            color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .header .username {
+            font-size: 18px;
+            margin-right: 20px;
+        }
+        .header .logout-btn {
+            background-color: #ff4d4d;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .header .logout-btn:hover {
+            background-color: #e63946;
+        }
+        .d-none {
+            display: none;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .form-container {
+            width: 300px; 
+            height: 300px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .form-container input,
+        .form-container select,
+        .form-container button {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-container button {
+            background-color: #0044cc;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .form-container button:hover {
+            background-color: #0033aa;
+        }
+        table {
+            width: 100%;
+            max-width: 1200px;
+            height: 50px;
+            border-collapse: collapse;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+            overflow-y: auto;
+        }
+        th, td {
+            padding: 15px 20px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #0044cc;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .no-data {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+            padding: 20px;
+        }
+        .dataTables_wrapper .dataTables_filter {
+            margin-bottom: 20px; 
+        }
+    </style>
+</body>
+</html>
